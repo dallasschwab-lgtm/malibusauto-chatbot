@@ -1,0 +1,119 @@
+Replace the entire server with this code. Update package.json to only need node-fetch as a dependency. Use process.env.PORT for the port. Here is the new server code:
+
+import http from "http";
+import fetch from "node-fetch";
+
+const SM_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjaWQiOiI2NDM3NDExYjA3Yjg3ZDAwMjQwNzhlZDEiLCJpYXQiOjE3ODI2NjQ3NTMsImlkIjoiNjQzNzQxMWIwN2I4N2QwMDI0MDc4ZWQzIiwibGlkIjoiNjQzNzQxMWIwN2I4N2QwMDI0MDc4ZWQxIiwicCI6ImFwaSIsInJpZCI6InVjMSIsInNhZCI6MCwic2lkIjoiNTgyNTA0ODgwNjk3MjMxMyIsInRjaWQiOiI2NDM3NDExYjA3Yjg3ZDAwMjQwNzhlZDEiLCJkYXRhU2hhcmluZyI6ZmFsc2UsImhhc0hxIjpmYWxzZSwib25iIjo3LCJwYXkiOjMsImF1ZCI6ImFwaSIsImlzcyI6Imh0dHBzOi8vYXBpLnNob3Btb25rZXkuY2xvdWQiLCJleHAiOjQ5Mzg0MjQ3NTN9.LKPGInLMmdEV70anTfRIoolEurgkK7qt7-G5q8mB5mc";
+const BASE = "https://api.shopmonkey.cloud/v3";
+const PORT = process.env.PORT || 3000;
+
+async function sm(path, method = "GET", body = null) {
+  const opts = { method, headers: { Authorization: `Bearer ${SM_TOKEN}`, "Content-Type": "application/json" } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(`${BASE}${path}`, opts);
+  const json = await res.json();
+  if (!res.ok || json.success === false) throw new Error(json.message || `HTTP ${res.status}`);
+  return json.data ?? json;
+}
+
+const TOOLS = [
+  { name: "sm_get_company", description: "Get Malibu's Auto Center company info.", inputSchema: { type: "object", properties: {} } },
+  { name: "sm_list_customers", description: "List customers. Optional: search, limit.", inputSchema: { type: "object", properties: { search: { type: "string" }, limit: { type: "number" } } } },
+  { name: "sm_get_customer", description: "Get full customer details by ID.", inputSchema: { type: "object", required: ["customer_id"], properties: { customer_id: { type: "string" } } } },
+  { name: "sm_create_customer", description: "Create a new customer.", inputSchema: { type: "object", required: ["first_name","last_name"], properties: { first_name: { type: "string" }, last_name: { type: "string" }, email: { type: "string" }, phone: { type: "string" }, notes: { type: "string" } } } },
+  { name: "sm_list_orders", description: "List work orders. Optional status: open|in_progress|completed|waiting_for_parts|all", inputSchema: { type: "object", properties: { status: { type: "string" }, customer_id: { type: "string" }, limit: { type: "number" } } } },
+  { name: "sm_get_order", description: "Get full work order details by ID.", inputSchema: { type: "object", required: ["order_id"], properties: { order_id: { type: "string" } } } },
+  { name: "sm_add_order_note", description: "Add a note to a work order.", inputSchema: { type: "object", required: ["order_id","note"], properties: { order_id: { type: "string" }, note: { type: "string" } } } },
+  { name: "sm_list_vehicles", description: "List vehicles. Optional: customer_id, limit.", inputSchema: { type: "object", properties: { customer_id: { type: "string" }, limit: { type: "number" } } } },
+  { name: "sm_list_inventory", description: "List parts/inventory. Optional: search, limit.", inputSchema: { type: "object", properties: { search: { type: "string" }, limit: { type: "number" } } } },
+];
+
+async function callTool(name, args) {
+  switch (name) {
+    case "sm_get_company": return JSON.stringify(await sm("/company"), null, 2);
+    case "sm_list_customers": {
+      let path = `/customer?limit=${args.limit||25}&sort=updatedDate&order=DESC`;
+      if (args.search) path += `&q=${encodeURIComponent(args.search)}`;
+      const d = await sm(path); const items = Array.isArray(d) ? d : (d.data||[]);
+      return JSON.stringify(items.map(c => ({ id: c.id, name: `${c.firstName||""} ${c.lastName||""}`.trim(), email: c.email, phone: c.phone, vehicles: c.vehicleCount??0, lastVisit: c.updatedDate })), null, 2);
+    }
+    case "sm_get_customer": return JSON.stringify(await sm(`/customer/${args.customer_id}`), null, 2);
+    case "sm_create_customer": {
+      const d = await sm("/customer","POST",{ firstName: args.first_name, lastName: args.last_name, email: args.email||null, phone: args.phone||null, note: args.notes||null });
+      return JSON.stringify({ success: true, customer_id: d.id });
+    }
+    case "sm_list_orders": {
+      let path = `/order?limit=${args.limit||25}&sort=updatedDate&order=DESC`;
+      if (args.status && args.status !== "all") path += `&status=${args.status}`;
+      if (args.customer_id) path += `&customerId=${args.customer_id}`;
+      const d = await sm(path); const items = Array.isArray(d) ? d : (d.data||[]);
+      return JSON.stringify(items.map(o => ({ id: o.id, number: o.number, status: o.status, customer: o.customerName||o.customerId, vehicle: o.vehicleName||null, total: o.totalAmountCents?`$${(o.totalAmountCents/100).toFixed(2)}`:null, updated: o.updatedDate })), null, 2);
+    }
+    case "sm_get_order": return JSON.stringify(await sm(`/order/${args.order_id}`), null, 2);
+    case "sm_add_order_note": await sm(`/order/${args.order_id}/note`,"POST",{ note: args.note }); return JSON.stringify({ success: true });
+    case "sm_list_vehicles": {
+      let path = `/vehicle?limit=${args.limit||25}`;
+      if (args.customer_id) path += `&customerId=${args.customer_id}`;
+      const d = await sm(path); const items = Array.isArray(d) ? d : (d.data||[]);
+      return JSON.stringify(items.map(v => ({ id: v.id, year: v.year, make: v.make, model: v.model, color: v.color, vin: v.vin, plate: v.plate })), null, 2);
+    }
+    case "sm_list_inventory": {
+      let path = `/inventory?limit=${args.limit||25}`;
+      if (args.search) path += `&q=${encodeURIComponent(args.search)}`;
+      const d = await sm(path); const items = Array.isArray(d) ? d : (d.data||[]);
+      return JSON.stringify(items.map(i => ({ id: i.id, name: i.name, partNumber: i.partNumber, quantity: i.quantityOnHand, price: i.retailPriceCents?`$${(i.retailPriceCents/100).toFixed(2)}`:null })), null, 2);
+    }
+    default: throw new Error(`Unknown tool: ${name}`);
+  }
+}
+
+const server = http.createServer(async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, mcp-session-id, Accept");
+  if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
+  if (req.method === "DELETE") { res.writeHead(200); res.end(); return; }
+  if (req.method === "GET") {
+    const body = JSON.stringify({ name: "shopmonkey-mcp", version: "1.0.0", protocol: "mcp", status: "ok" });
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(body);
+    return;
+  }
+  if (req.method === "POST") {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const raw = Buffer.concat(chunks).toString();
+    let msg;
+    try { msg = JSON.parse(raw); } catch { res.writeHead(400); res.end("Bad JSON"); return; }
+    const messages = Array.isArray(msg) ? msg : [msg];
+    const responses = [];
+    for (const m of messages) {
+      const id = m.id ?? null;
+      const method = m.method || "";
+      try {
+        if (method === "initialize") {
+          responses.push({ jsonrpc: "2.0", id, result: { protocolVersion: m.params?.protocolVersion || "2024-11-05", capabilities: { tools: { listChanged: false } }, serverInfo: { name: "shopmonkey-mcp", version: "1.0.0" } }});
+        } else if (method === "notifications/initialized" || method === "ping") {
+          if (id !== null) responses.push({ jsonrpc: "2.0", id, result: {} });
+        } else if (method === "tools/list") {
+          responses.push({ jsonrpc: "2.0", id, result: { tools: TOOLS } });
+        } else if (method === "tools/call") {
+          const { name, arguments: args } = m.params || {};
+          const text = await callTool(name, args || {});
+          responses.push({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text }] } });
+        } else {
+          if (id !== null) responses.push({ jsonrpc: "2.0", id, error: { code: -32601, message: `Method not found: ${method}` } });
+        }
+      } catch (e) {
+        if (id !== null) responses.push({ jsonrpc: "2.0", id, error: { code: -32000, message: e.message } });
+      }
+    }
+    const responseBody = responses.length === 1 ? JSON.stringify(responses[0]) : JSON.stringify(responses);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(responseBody);
+    return;
+  }
+  res.writeHead(405); res.end("Method not allowed");
+});
+
+server.listen(PORT, "0.0.0.0", () => console.log(`ShopMonkey MCP running on port ${PORT}`));
