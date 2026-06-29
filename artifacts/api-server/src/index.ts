@@ -18,36 +18,28 @@ async function sm(path, method = "GET", body = null) {
 }
 
 async function loadWorkflowStatuses() {
-  const candidates = [
-    "/workflowstatus",
-    "/workflow-status",
-    "/workflow",
-    "/orderlabel",
-    "/order-label",
-    "/label",
-  ];
-  for (const ep of candidates) {
-    try {
-      const data = await sm(ep);
-      const items = Array.isArray(data) ? data : (data.data || []);
-      if (!Array.isArray(items) || items.length === 0) {
-        console.log(`⚠ ${ep} returned empty or non-array`);
-        continue;
+  // /workflow returns { [statusId]: { name, orders, hasMore } } — parse as entries
+  try {
+    const data = await sm("/workflow");
+    if (data && typeof data === "object" && !Array.isArray(data)) {
+      const entries = Object.entries(data) as [string, { name: string }][];
+      if (entries.length > 0) {
+        console.log(`✓ /workflow statuses: ${entries.map(([id, v]) => `${v.name} (${id})`).join(", ")}`);
+        const found = entries.find(([, v]) => (v.name || "").toLowerCase().includes("request"));
+        if (found) {
+          requestFormsStatusId = found[0];
+          console.log(`✓ "Request Forms" status ID: ${requestFormsStatusId}`);
+        } else {
+          console.log(`⚠ No "Request Forms" status found. Available: ${entries.map(([, v]) => v.name).join(", ")}`);
+        }
+        return;
       }
-      console.log(`✓ ${ep} works! Items: ${items.slice(0,5).map(s => s.name || s.label || JSON.stringify(s)).join(", ")}`);
-      const found = items.find(s => (s.name || s.label || "").toLowerCase().includes("request"));
-      if (found) {
-        requestFormsStatusId = found.id;
-        console.log(`✓ "Request Forms" ID: ${requestFormsStatusId}`);
-      } else {
-        console.log(`⚠ No "Request Forms" found in ${ep}. Available: ${items.map(s => s.name || s.label).join(", ")}`);
-      }
-      return;
-    } catch (e) {
-      console.log(`⚠ ${ep} failed: ${e.message}`);
     }
+    console.log(`⚠ /workflow returned unexpected shape: ${JSON.stringify(data).slice(0, 200)}`);
+  } catch (e) {
+    console.log(`⚠ /workflow failed: ${(e as Error).message}`);
   }
-  console.log("⚠ Could not find workflow status endpoint after trying all candidates.");
+  console.log("⚠ Could not load workflow statuses.");
 }
 
 const TOOLS = [
