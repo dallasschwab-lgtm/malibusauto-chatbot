@@ -6,6 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 const SM_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjaWQiOiI2NDM3NDExYjA3Yjg3ZDAwMjQwNzhlZDEiLCJpYXQiOjE3ODI2NjQ3NTMsImlkIjoiNjQzNzQxMWIwN2I4N2QwMDI0MDc4ZWQzIiwibGlkIjoiNjQzNzQxMWIwN2I4N2QwMDI0MDc4ZWQxIiwicCI6ImFwaSIsInJpZCI6InVjMSIsInNhZCI6MCwic2lkIjoiNTgyNTA0ODgwNjk3MjMxMyIsInRjaWQiOiI2NDM3NDExYjA3Yjg3ZDAwMjQwNzhlZDEiLCJkYXRhU2hhcmluZyI6ZmFsc2UsImhhc0hxIjpmYWxzZSwib25iIjo3LCJwYXkiOjMsImF1ZCI6ImFwaSIsImlzcyI6Imh0dHBzOi8vYXBpLnNob3Btb25rZXkuY2xvdWQiLCJleHAiOjQ5Mzg0MjQ3NTN9.LKPGInLMmdEV70anTfRIoolEurgkK7qt7-G5q8mB5mc";
 const BASE = "https://api.shopmonkey.cloud/v3";
 const PORT = process.env.PORT || 3000;
+let requestFormsStatusId = null;
 
 async function sm(path, method = "GET", body = null) {
   const opts = { method, headers: { Authorization: `Bearer ${SM_TOKEN}`, "Content-Type": "application/json" } };
@@ -14,6 +15,22 @@ async function sm(path, method = "GET", body = null) {
   const json = await res.json();
   if (!res.ok || json.success === false) throw new Error(json.message || `HTTP ${res.status}`);
   return json.data ?? json;
+}
+
+async function loadWorkflowStatuses() {
+  try {
+    const data = await sm("/workflowstatus");
+    const items = Array.isArray(data) ? data : (data.data || []);
+    const found = items.find(s => s.name && s.name.toLowerCase().includes("request"));
+    if (found) {
+      requestFormsStatusId = found.id;
+      console.log(`✓ "Request Forms" workflow status ID: ${requestFormsStatusId}`);
+    } else {
+      console.log(`⚠ Could not find "Request Forms" workflow status. Available: ${items.map(s => s.name).join(", ")}`);
+    }
+  } catch (e) {
+    console.log(`⚠ Could not load workflow statuses: ${e.message}`);
+  }
 }
 
 const TOOLS = [
@@ -26,6 +43,21 @@ const TOOLS = [
   { name: "sm_add_order_note", description: "Add a note to a work order.", inputSchema: { type: "object", required: ["order_id", "note"], properties: { order_id: { type: "string" }, note: { type: "string" } } } },
   { name: "sm_list_vehicles", description: "List vehicles. Optional: customer_id, limit.", inputSchema: { type: "object", properties: { customer_id: { type: "string" }, limit: { type: "number" } } } },
   { name: "sm_list_inventory", description: "List parts/inventory. Optional: search, limit.", inputSchema: { type: "object", properties: { search: { type: "string" }, limit: { type: "number" } } } },
+  {
+    name: "sm_create_lead_estimate",
+    description: "Create a new customer AND a new estimate in ShopMonkey for a website chatbot lead. Use this whenever a customer provides their name and phone number. Saves their contact info, logs chat notes as the estimate note, and sets the estimate to 'Request Forms' workflow status so the team sees it.",
+    inputSchema: {
+      type: "object",
+      required: ["first_name", "last_name", "phone", "interest_notes"],
+      properties: {
+        first_name: { type: "string" },
+        last_name: { type: "string" },
+        phone: { type: "string" },
+        email: { type: "string" },
+        interest_notes: { type: "string", description: "Summary of what the customer is interested in and any details from the chat — be thorough so the team has full context when they follow up." },
+      },
+    },
+  },
 ];
 
 async function callTool(name, args) {
@@ -62,6 +94,27 @@ async function callTool(name, args) {
       if (args.search) path += `&q=${encodeURIComponent(args.search)}`;
       const d = await sm(path); const items = Array.isArray(d) ? d : (d.data || []);
       return JSON.stringify(items.map(i => ({ id: i.id, name: i.name, partNumber: i.partNumber, quantity: i.quantityOnHand, price: i.retailPriceCents ? `$${(i.retailPriceCents / 100).toFixed(2)}` : null })), null, 2);
+    }
+    case "sm_create_lead_estimate": {
+      const customer = await sm("/customer", "POST", {
+        firstName: args.first_name,
+        lastName: args.last_name,
+        email: args.email || null,
+        phone: args.phone || null,
+      });
+      const orderBody = {
+        customerId: customer.id,
+        note: `Website chatbot lead — ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}\n\n${args.interest_notes}`,
+      };
+      if (requestFormsStatusId) orderBody.workflowStatusId = requestFormsStatusId;
+      const order = await sm("/order", "POST", orderBody);
+      return JSON.stringify({
+        success: true,
+        customer_id: customer.id,
+        estimate_id: order.id,
+        estimate_number: order.number,
+        workflow: requestFormsStatusId ? "Request Forms" : "default (Request Forms ID not found at startup — check logs)",
+      });
     }
     default: throw new Error(`Unknown tool: ${name}`);
   }
@@ -173,4 +226,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`ShopMonkey MCP + Chatbot running on port ${PORT}`);
+  loadWorkflowStatuses();
 });

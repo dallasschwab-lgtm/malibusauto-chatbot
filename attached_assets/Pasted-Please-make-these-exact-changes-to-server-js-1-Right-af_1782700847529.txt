@@ -1,0 +1,66 @@
+Please make these exact changes to server.js:
+
+1. Right after `const PORT = process.env.PORT || 3000;` add this line:
+let requestFormsStatusId = null;
+
+2. Right after the closing brace of the `sm()` helper function, add this new function:
+async function loadWorkflowStatuses() {
+  try {
+    const data = await sm("/workflowstatus");
+    const items = Array.isArray(data) ? data : (data.data || []);
+    const found = items.find(s => s.name && s.name.toLowerCase().includes("request"));
+    if (found) {
+      requestFormsStatusId = found.id;
+      console.log(`✓ "Request Forms" workflow status ID: ${requestFormsStatusId}`);
+    } else {
+      console.log(`⚠ Could not find "Request Forms" workflow status. Available: ${items.map(s => s.name).join(", ")}`);
+    }
+  } catch (e) {
+    console.log(`⚠ Could not load workflow statuses: ${e.message}`);
+  }
+}
+
+3. Add this new tool to the end of the TOOLS array (before the closing bracket]):
+  {
+    name: "sm_create_lead_estimate",
+    description: "Create a new customer AND a new estimate in ShopMonkey for a website chatbot lead. Use this whenever a customer provides their name and phone number. Saves their contact info, logs chat notes as the estimate note, and sets the estimate to 'Request Forms' workflow status so the team sees it.",
+    inputSchema: {
+      type: "object",
+      required: ["first_name", "last_name", "phone", "interest_notes"],
+      properties: {
+        first_name: { type: "string" },
+        last_name: { type: "string" },
+        phone: { type: "string" },
+        email: { type: "string" },
+        interest_notes: { type: "string", description: "Summary of what the customer is interested in and any details from the chat — be thorough so the team has full context when they follow up." },
+      },
+    },
+  },
+
+4. Add this case to the callTool switch statement before the `default:` line:
+    case "sm_create_lead_estimate": {
+      const customer = await sm("/customer", "POST", {
+        firstName: args.first_name,
+        lastName: args.last_name,
+        email: args.email || null,
+        phone: args.phone || null,
+      });
+      const orderBody = {
+        customerId: customer.id,
+        note: `Website chatbot lead — ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}\n\n${args.interest_notes}`,
+      };
+      if (requestFormsStatusId) orderBody.workflowStatusId = requestFormsStatusId;
+      const order = await sm("/order", "POST", orderBody);
+      return JSON.stringify({
+        success: true,
+        customer_id: customer.id,
+        estimate_id: order.id,
+        estimate_number: order.number,
+        workflow: requestFormsStatusId ? "Request Forms" : "default (Request Forms ID not found at startup — check logs)",
+      });
+    }
+
+5. In server.listen callback, add this line after the console.log lines:
+  loadWorkflowStatuses();
+
+6. Replace the entire CHAT_SYSTEM string with this updated version that includes window tint pricing, new products, lead capture using sm_create_lead_estimate, and upset customer handling. The full updated CHAT_SYSTEM is saved in the local file at C:\Users\Schwab\Desktop\shopmonkey-mcp\server.js — please read that file and use its CHAT_SYSTEM content exactly.
