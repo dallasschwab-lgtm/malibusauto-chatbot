@@ -426,7 +426,7 @@ const server = http.createServer(async (req, res) => {
 
   // ── GET — widget or health check ──
   if (req.method === "GET") {
-    if (pathname === "/" || pathname === "") {
+    if (pathname === "/widget") {
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(WIDGET_HTML);
     } else {
