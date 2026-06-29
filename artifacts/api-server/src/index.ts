@@ -18,19 +18,36 @@ async function sm(path, method = "GET", body = null) {
 }
 
 async function loadWorkflowStatuses() {
-  try {
-    const data = await sm("/workflowstatus");
-    const items = Array.isArray(data) ? data : (data.data || []);
-    const found = items.find(s => s.name && s.name.toLowerCase().includes("request"));
-    if (found) {
-      requestFormsStatusId = found.id;
-      console.log(`✓ "Request Forms" workflow status ID: ${requestFormsStatusId}`);
-    } else {
-      console.log(`⚠ Could not find "Request Forms" workflow status. Available: ${items.map(s => s.name).join(", ")}`);
+  const candidates = [
+    "/workflowstatus",
+    "/workflow-status",
+    "/workflow",
+    "/orderlabel",
+    "/order-label",
+    "/label",
+  ];
+  for (const ep of candidates) {
+    try {
+      const data = await sm(ep);
+      const items = Array.isArray(data) ? data : (data.data || []);
+      if (!Array.isArray(items) || items.length === 0) {
+        console.log(`⚠ ${ep} returned empty or non-array`);
+        continue;
+      }
+      console.log(`✓ ${ep} works! Items: ${items.slice(0,5).map(s => s.name || s.label || JSON.stringify(s)).join(", ")}`);
+      const found = items.find(s => (s.name || s.label || "").toLowerCase().includes("request"));
+      if (found) {
+        requestFormsStatusId = found.id;
+        console.log(`✓ "Request Forms" ID: ${requestFormsStatusId}`);
+      } else {
+        console.log(`⚠ No "Request Forms" found in ${ep}. Available: ${items.map(s => s.name || s.label).join(", ")}`);
+      }
+      return;
+    } catch (e) {
+      console.log(`⚠ ${ep} failed: ${e.message}`);
     }
-  } catch (e) {
-    console.log(`⚠ Could not load workflow statuses: ${e.message}`);
   }
+  console.log("⚠ Could not find workflow status endpoint after trying all candidates.");
 }
 
 const TOOLS = [
