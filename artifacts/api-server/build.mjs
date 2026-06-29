@@ -17,7 +17,7 @@ async function buildAll() {
     outdir: distDir,
     outExtension: { ".js": ".mjs" },
     logLevel: "info",
-    external: ["*.node"],
+    external: ["*.node", "@anthropic-ai/sdk"],
     sourcemap: "linked",
   });
 }
