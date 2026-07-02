@@ -142,15 +142,21 @@ CONTACT & HOURS:
 - Most parts arrive within 1–2 business days from our distributors
 - Online scheduling: https://app.shopmonkey.cloud/public/scheduler/6437411b07b87d0024078ed1?fullPage=true
 
-LEAD CAPTURE — VERY IMPORTANT:
+LEAD CAPTURE — CRITICAL RULES:
 Whenever a customer expresses genuine interest in a product or service, asks for pricing, asks about scheduling, or wants more information — ask for their name and phone number so our team can follow up. Do this naturally, not robotically. Example: "I'd love to get you a quote on that — can I grab your name and number so our team can reach out?"
 
-Once you have their name and phone number, use sm_create_lead_estimate to:
-1. Create them as a customer in our system
-2. Create an estimate linked to them in the "Request Forms" workflow stage
-3. Log everything from the conversation as the estimate note — what they're interested in, their vehicle (year/make/model if mentioned), any specific questions or preferences they shared
+Once you have their name AND phone number, you MUST call sm_create_lead_estimate BEFORE saying anything else. This is required — do not skip it, do not summarize it, do not confirm to the customer until the tool has been called and returned success.
 
-Be thorough in the interest_notes field. Include product they asked about, their vehicle if known, any pricing questions, and anything else useful so the team has full context when they call back. After saving, tell the customer: "Perfect — I've got your info and our team will be in touch shortly to put together a quote for you!"
+The tool will:
+1. Create them as a customer in our system
+2. Create an estimate in the "Request Forms" workflow stage
+3. Log the conversation as the estimate note
+
+Be thorough in the interest_notes field — include product they asked about, their vehicle (year/make/model if mentioned), any pricing questions, and anything else useful so the team has full context.
+
+ONLY AFTER sm_create_lead_estimate returns successfully, tell the customer: "Perfect — I've got your info saved and our team will be in touch shortly to put together a quote for you!"
+
+IMPORTANT: Never tell a customer their info is saved unless sm_create_lead_estimate has already run and returned success. If the tool fails, say: "I'm having a technical issue saving your info right now — please call us directly at 405-799-6700 and we'll take care of you!"
 
 SERVICES WE OFFER:
 
@@ -321,7 +327,7 @@ async function runChat(sessionId, userMessage) {
   const messages = history.slice(-20);
   let response;
   while (true) {
-    response = await anthropic.messages.create({ model: "claude-haiku-4-5-20251001", max_tokens: 512, system: CHAT_SYSTEM, messages, tools: CLAUDE_TOOLS });
+    response = await anthropic.messages.create({ model: "claude-haiku-4-5-20251001", max_tokens: 1024, system: CHAT_SYSTEM, messages, tools: CLAUDE_TOOLS });
     if (response.stop_reason === "tool_use") {
       const toolResults = [];
       for (const block of response.content) {
@@ -349,7 +355,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "DELETE") { res.writeHead(200); res.end(); return; }
   const pathname = new URL(req.url, "http://localhost").pathname;
 
-  if (req.method === "POST" && pathname === "/chat") {
+  if (req.method === "POST" && (pathname === "/chat" || pathname === "/api/chat")) {
     const chunks = []; for await (const chunk of req) chunks.push(chunk);
     let body; try { body = JSON.parse(Buffer.concat(chunks).toString()); } catch { res.writeHead(400); res.end("Bad JSON"); return; }
     try {
@@ -361,7 +367,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && pathname === "/widget") {
+  if (req.method === "GET" && (pathname === "/widget" || pathname === "/api/widget")) {
     console.log("Widget request — cwd:", process.cwd());
     try {
       const html = readFileSync(join(process.cwd(), "src", "chatbot-widget.html"), "utf8");
