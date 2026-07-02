@@ -3,6 +3,7 @@ import http from "http";
 import fetch from "node-fetch";
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "fs";
+import { join } from "path";
 
 const SM_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjaWQiOiI2NDM3NDExYjA3Yjg3ZDAwMjQwNzhlZDEiLCJpYXQiOjE3ODI2NjQ3NTMsImlkIjoiNjQzNzQxMWIwN2I4N2QwMDI0MDc4ZWQzIiwibGlkIjoiNjQzNzQxMWIwN2I4N2QwMDI0MDc4ZWQxIiwicCI6ImFwaSIsInJpZCI6InVjMSIsInNhZCI6MCwic2lkIjoiNTgyNTA0ODgwNjk3MjMxMyIsInRjaWQiOiI2NDM3NDExYjA3Yjg3ZDAwMjQwNzhlZDEiLCJkYXRhU2hhcmluZyI6ZmFsc2UsImhhc0hxIjpmYWxzZSwib25iIjo3LCJwYXkiOjMsImF1ZCI6ImFwaSIsImlzcyI6Imh0dHBzOi8vYXBpLnNob3Btb25rZXkuY2xvdWQiLCJleHAiOjQ5Mzg0MjQ3NTN9.LKPGInLMmdEV70anTfRIoolEurgkK7qt7-G5q8mB5mc";
 const BASE = "https://api.shopmonkey.cloud/v3";
@@ -361,11 +362,12 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && pathname === "/widget") {
+    console.log("Widget request — cwd:", process.cwd());
     try {
-      const html = readFileSync(new URL("./chatbot-widget.html", import.meta.url).pathname, "utf8");
+      const html = readFileSync(join(process.cwd(), "src", "chatbot-widget.html"), "utf8");
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(html);
-    } catch (e) {
+    } catch (e: any) {
       res.writeHead(500);
       res.end("Widget file not found: " + e.message);
     }
