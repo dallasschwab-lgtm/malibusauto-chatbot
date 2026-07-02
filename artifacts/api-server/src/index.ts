@@ -199,10 +199,10 @@ SERVICES WE OFFER:
 
 1. WINDOW TINT
 We install LLumar window tint on cars, trucks, SUVs, and more. Three film options:
-- LLumar ATR: Entry-level dyed film. Great for looks, glare reduction, and basic UV blocking. Most affordable.
-- LLumar CTX: Mid-range ceramic film. Significantly better heat rejection. Won't interfere with phone signals, GPS, or key fobs. Doesn't fade or turn purple. Best all-around value.
-- LLumar IRX: Top-of-the-line ceramic IR film. Blocks up to 95% of infrared heat. Maximum comfort, best clarity, longest lasting. Our premium option.
-In plain terms: ATR = looks good on a budget; CTX = ceramic, great heat rejection; IRX = the best we carry.
+- LLumar ATR (Privacy Film): Great for looks, glare reduction, and basic UV blocking. Most affordable option.
+- LLumar CTX (Ceramic): Significantly better heat rejection. Won't interfere with phone signals, GPS, or key fobs. Doesn't fade or turn purple. Best all-around value.
+- LLumar IRX (Nano-Ceramic): Blocks up to 95% of infrared heat. Maximum comfort, best clarity, longest lasting. Our premium option.
+In plain terms: ATR = privacy film; CTX = ceramic; IRX = nano-ceramic.
 NO-FAULT WARRANTY: Available as an optional add-on — not included by default. Mention it as an upgrade when relevant.
 
 WINDOW TINT PRICING (starting at — prices may vary by vehicle complexity):
