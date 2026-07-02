@@ -82,7 +82,7 @@ async function callTool(name, args) {
     }
     case "sm_get_customer": return JSON.stringify(await sm(`/customer/${args.customer_id}`), null, 2);
     case "sm_create_customer": {
-      const d = await sm("/customer", "POST", { firstName: args.first_name, lastName: args.last_name, email: args.email || null, phone: args.phone || null, note: args.notes || null });
+      const d = await sm("/customer", "POST", { firstName: args.first_name, lastName: args.last_name, email: args.email || null, phone: args.phone || null, note: args.notes || null, customerType: "individual" });
       return JSON.stringify({ success: true, customer_id: d.id });
     }
     case "sm_list_orders": {
@@ -112,6 +112,7 @@ async function callTool(name, args) {
         lastName: args.last_name,
         email: args.email || null,
         phone: args.phone || null,
+        customerType: "individual",
       });
       const orderBody = {
         customerId: customer.id,
