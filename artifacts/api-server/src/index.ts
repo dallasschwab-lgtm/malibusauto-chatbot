@@ -59,13 +59,20 @@ const TOOLS = [
     description: "Create a new customer AND a new estimate in ShopMonkey for a website chatbot lead. Use this whenever a customer provides their name and phone number. Saves their contact info, logs chat notes as the estimate note, and sets the estimate to 'Request Forms' workflow status so the team sees it.",
     inputSchema: {
       type: "object",
-      required: ["first_name", "last_name", "phone", "interest_notes"],
+      required: ["first_name", "last_name", "phone", "customer_summary", "full_chat_transcript"],
       properties: {
         first_name: { type: "string" },
         last_name: { type: "string" },
         phone: { type: "string" },
         email: { type: "string" },
-        interest_notes: { type: "string", description: "Summary of what the customer is interested in and any details from the chat — be thorough so the team has full context when they follow up." },
+        customer_summary: {
+          type: "string",
+          description: "2-3 sentence customer-facing summary of what the customer wants. This will appear in the Customer Comments field visible to the customer. Example: 'Customer is interested in LLumar CTX window tint for their 2021 Chevy Silverado crew cab. They asked about pricing and install time. Team to follow up with a quote.'"
+        },
+        full_chat_transcript: {
+          type: "string",
+          description: "The complete conversation from start to finish, formatted as:\nCustomer: [message]\nBot: [reply]\nCustomer: [message]\nBot: [reply]\n\nInclude every single turn."
+        },
       },
     },
   },
@@ -153,7 +160,12 @@ The tool will:
 2. Create an estimate in the "Request Forms" workflow stage
 3. Log the conversation as the estimate note
 
-Be thorough in the interest_notes field — include product they asked about, their vehicle (year/make/model if mentioned), any pricing questions, and anything else useful so the team has full context.
+You must fill in two fields:
+- customer_summary: Write 2-3 sentences describing what the customer wants, in plain language the customer would recognize. This is customer-facing. Example: 'Customer is interested in LLumar CTX window tint for their 2022 F-150 crew cab. They asked about heat rejection and warranty. Team to follow up with pricing.'
+- full_chat_transcript: Copy the ENTIRE conversation from start to finish, formatted as:
+Customer: [their exact message]
+Bot: [your exact reply]
+...every turn, nothing omitted.
 
 ONLY AFTER sm_create_lead_estimate returns successfully, tell the customer: "Perfect — I've got your info saved and our team will be in touch shortly to put together a quote for you!"
 
