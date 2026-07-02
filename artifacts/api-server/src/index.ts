@@ -112,7 +112,7 @@ async function callTool(name, args) {
         lastName: args.last_name,
         email: args.email || null,
         phone: args.phone || null,
-        customerType: "individual",
+        customerType: "Customer",
       });
       const orderBody = {
         customerId: customer.id,
