@@ -1,0 +1,68 @@
+Three updates needed in index.ts. Please apply all of them and restart:
+
+--- UPDATE 1: Dedupe logic in sm_create_lead_estimate ---
+Before creating a new customer, search SM by phone first. Replace the customer creation block with:
+
+      // 1. Search for existing customer by phone to avoid duplicates
+      let customerId: string | null = null;
+      try {
+        const search = await sm(`/customer?q=${encodeURIComponent(args.phone)}&limit=10`);
+        const items = Array.isArray(search) ? search : (search.data || []);
+        const clean = (p: string) => (p || "").replace(/\D/g, "");
+        const match = items.find((c: any) => clean(c.phone) === clean(args.phone));
+        if (match) { customerId = match.id; console.log(`✓ Existing customer found: ${match.firstName} ${match.lastName} (${match.id})`); }
+      } catch (e: any) { console.log("Customer search error:", e.message); }
+
+      // 2. Create customer only if not found
+      if (!customerId) {
+        const customer = await sm("/customer", "POST", {
+          firstName: args.first_name,
+          lastName: args.last_name,
+          email: args.email || null,
+          phone: args.phone || null,
+          customerType: "Customer",
+        });
+        customerId = customer.id;
+      }
+
+      // 3. Create the estimate
+      const orderBody: any = { customerId };
+      if (requestFormsStatusId) orderBody.workflowStatusId = requestFormsStatusId;
+      const order = await sm("/order", "POST", orderBody);
+
+      // 4. Try complaint field for Customer Comments (may or may not persist)
+      try { await sm(`/order/${order.id}`, "PUT", { complaint: args.customer_summary }); } catch (e: any) { console.log("complaint PUT failed:", e.message); }
+
+      // 5. Add full transcript + summary to Notes tab
+      const noteText = `Website chatbot lead — ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}\n\n${args.full_chat_transcript}\n\n---\nSUMMARY: ${args.customer_summary}`;
+      try { await sm(`/order/${order.id}/notes`, "POST", { note: noteText }); } catch (e: any) { console.log("Notes POST failed:", e.message); }
+
+      return JSON.stringify({
+        success: true,
+        customer_id: customerId,
+        estimate_id: order.id,
+        estimate_number: order.number,
+        workflow: requestFormsStatusId ? "Request Forms" : "default",
+      });
+
+--- UPDATE 2: Window tint — fix warranty language and add consultative style rule ---
+In the WINDOW TINT section of CHAT_SYSTEM:
+
+a) Remove "Backed by a no-fault warranty." from the intro line
+
+b) After the film options, add:
+"NO-FAULT WARRANTY: Available as an optional add-on — not included by default. Mention it as an upgrade when relevant."
+
+c) After the pricing grid, add this new section:
+"WINDOW TINT CONVERSATION STYLE — IMPORTANT:
+Do NOT dump the full price grid when someone asks about tint. Be consultative:
+1. Ask what vehicle they have if you don't know yet
+2. Ask what they're mainly looking for — heat reduction, privacy, looks, or all of the above
+3. Based on their answer, recommend 1-2 film options and give only the relevant pricing
+4. Keep it to 3-4 sentences. The goal is a conversation, not a brochure."
+
+--- UPDATE 3: Also check the console logs when sm_create_lead_estimate runs ---
+Add a console.log at the very start of the case:
+  console.log("sm_create_lead_estimate called:", args.first_name, args.last_name, args.phone);
+
+Then restart and confirm clean startup.

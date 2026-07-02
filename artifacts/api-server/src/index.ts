@@ -5,7 +5,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "fs";
 import { join } from "path";
 
-const SM_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjaWQiOiI2NDM3NDExYjA3Yjg3ZDAwMjQwNzhlZDEiLCJpYXQiOjE3ODI2NjQ3NTMsImlkIjoiNjQzNzQxMWIwN2I4N2QwMDI0MDc4ZWQzIiwibGlkIjoiNjQzNzQxMWIwN2I4N2QwMDI0MDc4ZWQxIiwicCI6ImFwaSIsInJpZCI6InVjMSIsInNhZCI6MCwic2lkIjoiNTgyNTA0ODgwNjk3MjMxMyIsInRjaWQiOiI2NDM3NDExYjA3Yjg3ZDAwMjQwNzhlZDEiLCJkYXRhU2hhcmluZyI6ZmFsc2UsImhhc0hxIjpmYWxzZSwib25iIjo3LCJwYXkiOjMsImF1ZCI6ImFwaSIsImlzcyI6Imh0dHBzOi8vYXBpLnNob3Btb25rZXkuY2xvdWQiLCJleHAiOjQ5Mzg0MjQ3NTN9.LKPGInLMmdEV70anTfRIoolEurgkK7qt7-G5q8mB5mc";
+const SM_TOKEN = process.env.SHOPMONKEY_API_TOKEN;
+if (!SM_TOKEN) { console.error("FATAL: SHOPMONKEY_API_TOKEN env var is not set"); process.exit(1); }
 const BASE = "https://api.shopmonkey.cloud/v3";
 const PORT = process.env.PORT || 3000;
 let requestFormsStatusId = null;
@@ -114,25 +115,48 @@ async function callTool(name, args) {
       return JSON.stringify(items.map(i => ({ id: i.id, name: i.name, partNumber: i.partNumber, quantity: i.quantityOnHand, price: i.retailPriceCents ? `$${(i.retailPriceCents / 100).toFixed(2)}` : null })), null, 2);
     }
     case "sm_create_lead_estimate": {
-      const customer = await sm("/customer", "POST", {
-        firstName: args.first_name,
-        lastName: args.last_name,
-        email: args.email || null,
-        phone: args.phone || null,
-        customerType: "Customer",
-      });
-      const orderBody = {
-        customerId: customer.id,
-        note: `Website chatbot lead — ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}\n\n${args.interest_notes}`,
-      };
+      console.log("sm_create_lead_estimate called:", args.first_name, args.last_name, args.phone);
+
+      // 1. Search for existing customer by phone to avoid duplicates
+      let customerId: string | null = null;
+      try {
+        const search = await sm(`/customer?q=${encodeURIComponent(args.phone)}&limit=10`);
+        const items = Array.isArray(search) ? search : (search.data || []);
+        const clean = (p: string) => (p || "").replace(/\D/g, "");
+        const match = items.find((c: any) => clean(c.phone) === clean(args.phone));
+        if (match) { customerId = match.id; console.log(`✓ Existing customer found: ${match.firstName} ${match.lastName} (${match.id})`); }
+      } catch (e: any) { console.log("Customer search error:", e.message); }
+
+      // 2. Create customer only if not found
+      if (!customerId) {
+        const customer = await sm("/customer", "POST", {
+          firstName: args.first_name,
+          lastName: args.last_name,
+          email: args.email || null,
+          phone: args.phone || null,
+          customerType: "Customer",
+        });
+        customerId = customer.id;
+      }
+
+      // 3. Create the estimate
+      const orderBody: any = { customerId };
       if (requestFormsStatusId) orderBody.workflowStatusId = requestFormsStatusId;
       const order = await sm("/order", "POST", orderBody);
+
+      // 4. Try complaint field for Customer Comments (Services tab)
+      try { await sm(`/order/${order.id}`, "PUT", { complaint: args.customer_summary }); } catch (e: any) { console.log("complaint PUT failed:", e.message); }
+
+      // 5. Add full transcript + summary to Notes tab
+      const noteText = `Website chatbot lead — ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}\n\n${args.full_chat_transcript}\n\n---\nSUMMARY: ${args.customer_summary}`;
+      try { await sm(`/order/${order.id}/note`, "POST", { note: noteText }); } catch (e: any) { console.log("Note POST failed:", e.message); }
+
       return JSON.stringify({
         success: true,
-        customer_id: customer.id,
+        customer_id: customerId,
         estimate_id: order.id,
         estimate_number: order.number,
-        workflow: requestFormsStatusId ? "Request Forms" : "default (Request Forms ID not found at startup — check logs)",
+        workflow: requestFormsStatusId ? "Request Forms" : "default",
       });
     }
     default: throw new Error(`Unknown tool: ${name}`);
@@ -174,11 +198,12 @@ IMPORTANT: Never tell a customer their info is saved unless sm_create_lead_estim
 SERVICES WE OFFER:
 
 1. WINDOW TINT
-We install LLumar window tint on cars, trucks, SUVs, and more. Backed by a no-fault warranty. Three film options:
+We install LLumar window tint on cars, trucks, SUVs, and more. Three film options:
 - LLumar ATR: Entry-level dyed film. Great for looks, glare reduction, and basic UV blocking. Most affordable.
 - LLumar CTX: Mid-range ceramic film. Significantly better heat rejection. Won't interfere with phone signals, GPS, or key fobs. Doesn't fade or turn purple. Best all-around value.
 - LLumar IRX: Top-of-the-line ceramic IR film. Blocks up to 95% of infrared heat. Maximum comfort, best clarity, longest lasting. Our premium option.
 In plain terms: ATR = looks good on a budget; CTX = ceramic, great heat rejection; IRX = the best we carry.
+NO-FAULT WARRANTY: Available as an optional add-on — not included by default. Mention it as an upgrade when relevant.
 
 WINDOW TINT PRICING (starting at — prices may vary by vehicle complexity):
                      ATR    CTX    IRX
@@ -195,6 +220,13 @@ Gift certificates available!
 
 *Prices subject to change based on complexity of vehicle and amount of tint required.
 Install time: two windows 30–60 minutes; full vehicle varies. Customers can schedule online or we can capture their info.
+
+WINDOW TINT CONVERSATION STYLE — IMPORTANT:
+Do NOT dump the full price grid when someone asks about tint. Be consultative:
+1. Ask what vehicle they have if you don't know yet
+2. Ask what they're mainly looking for — heat reduction, privacy, looks, or all of the above
+3. Based on their answer, recommend 1-2 film options and give only the relevant pricing
+4. Keep it to 3-4 sentences. The goal is a conversation, not a brochure.
 
 2. TRUCK BED COVERS (TONNEAU COVERS)
 As an authorized RealTruck dealer, we carry the full lineup of RealTruck brands. Popular options:
