@@ -1,0 +1,65 @@
+Please make these updates to index.ts:
+
+--- PART 1: Probe the notes endpoint ---
+The Notes tab in ShopMonkey is an internal-only text area. We need to find the correct API endpoint to write to it. Try each of these in order and tell me which one returns a success (not a 404/route-not-found):
+
+  await sm(`/order/${orderId}/notes`, "POST", { note: "test" })
+  await sm(`/order/${orderId}`, "PATCH", { note: "test" })
+  await sm(`/note`, "POST", { orderId: orderId, note: "test" })
+
+Use orderId = "9055c3a7-34ff-40f3-854a-dbf24afa6349" (the Jane Smith test estimate).
+Tell me which endpoint works and what the response looks like.
+
+Also try this for Customer Comments (Services tab — likely the "complaint" field):
+  await sm(`/order/${orderId}`, "PATCH", { complaint: "TEST customer comment from API" })
+Tell me if that works.
+
+--- PART 2: Update the sm_create_lead_estimate tool schema ---
+Replace the current inputSchema properties with:
+
+  properties: {
+    first_name: { type: "string" },
+    last_name: { type: "string" },
+    phone: { type: "string" },
+    email: { type: "string" },
+    customer_summary: {
+      type: "string",
+      description: "2-3 sentence customer-facing summary of what the customer wants. This will appear in the Customer Comments field visible to the customer. Example: 'Customer is interested in LLumar CTX window tint for their 2021 Chevy Silverado crew cab. They asked about pricing and install time. Team to follow up with a quote.'"
+    },
+    full_chat_transcript: {
+      type: "string",
+      description: "The complete conversation from start to finish, formatted as:\nCustomer: [message]\nBot: [reply]\nCustomer: [message]\nBot: [reply]\n\nInclude every single turn."
+    }
+  }
+
+And change required to: ["first_name", "last_name", "phone", "customer_summary", "full_chat_transcript"]
+
+--- PART 3: Update the sm_create_lead_estimate handler ---
+After creating the order, add:
+  // Set Customer Comments (Services tab) — "complaint" is the SM field for customer description
+  try {
+    await sm(`/order/${order.id}`, "PATCH", { complaint: args.customer_summary });
+  } catch(e) { console.log("complaint PATCH failed:", e.message); }
+
+  // Add full transcript to the internal Notes tab
+  // Use whichever /notes endpoint you found working in Part 1
+  try {
+    await sm(`/order/${order.id}/notes`, "POST", { note: args.full_chat_transcript });
+    // OR whichever endpoint worked
+  } catch(e) { console.log("note add failed:", e.message); }
+
+--- PART 4: Update CHAT_SYSTEM ---
+Find the LEAD CAPTURE section and update the sm_create_lead_estimate instructions to explain the two new fields:
+
+Replace: "Be thorough in the interest_notes field..."
+With:
+"You must fill in two fields:
+- customer_summary: Write 2-3 sentences describing what the customer wants, in plain language the customer would recognize. This is customer-facing. Example: 'Customer is interested in LLumar CTX window tint for their 2022 F-150 crew cab. They asked about heat rejection and warranty. Team to follow up with pricing.'
+- full_chat_transcript: Copy the ENTIRE conversation from start to finish, formatted as:\nCustomer: [their exact message]\nBot: [your exact reply]\n...every turn, nothing omitted."
+
+Also remove "interest_notes" from required fields and from any reference in the system prompt — it's replaced by customer_summary and full_chat_transcript.
+
+Then restart and tell me:
+1. Which note endpoint worked
+2. If the PATCH /complaint worked
+3. Confirm the server restarted cleanly
