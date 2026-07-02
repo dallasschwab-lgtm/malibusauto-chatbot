@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Malibu's Auto Center</title>
+</head>
+<body>
+<script>
+(function() {
+  var CHATBOT_URL = "/chat";
+  var BRAND_COLOR = "#c8102e";
+  var BOT_NAME = "Malibu's Auto";
+
+  var sessionId = "s_" + Math.random().toString(36).slice(2);
+  try {
+    var stored = localStorage.getItem("mac_session");
+    if (stored) sessionId = stored;
+    else localStorage.setItem("mac_session", sessionId);
+  } catch(e) {}
+
+  var style = document.createElement("style");
+  style.textContent = [
+    "#mac-chat-bubble { position:fixed; bottom:24px; right:24px; width:56px; height:56px; background:" + BRAND_COLOR + "; border-radius:50%; cursor:pointer; box-shadow:0 4px 16px rgba(0,0,0,0.25); display:flex; align-items:center; justify-content:center; z-index:9999; transition:transform .2s; }",
+    "#mac-chat-bubble:hover { transform:scale(1.08); }",
+    "#mac-chat-bubble svg { width:28px; height:28px; fill:white; }",
+    "#mac-chat-window { position:fixed; bottom:92px; right:24px; width:340px; max-height:500px; background:#fff; border-radius:16px; box-shadow:0 8px 32px rgba(0,0,0,0.18); display:flex; flex-direction:column; z-index:9999; overflow:hidden; font-family:Arial,sans-serif; font-size:14px; transform:scale(0.9) translateY(20px); opacity:0; pointer-events:none; transition:transform .2s, opacity .2s; }",
+    "#mac-chat-window.open { transform:scale(1) translateY(0); opacity:1; pointer-events:all; }",
+    "#mac-chat-header { background:" + BRAND_COLOR + "; color:white; padding:14px 16px; display:flex; align-items:center; gap:10px; font-weight:bold; }",
+    "#mac-chat-header .avatar { width:32px; height:32px; background:rgba(255,255,255,0.25); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:18px; }",
+    "#mac-chat-close { margin-left:auto; cursor:pointer; opacity:0.8; font-size:20px; line-height:1; }",
+    "#mac-chat-messages { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px; }",
+    ".mac-msg { max-width:80%; padding:10px 14px; border-radius:14px; line-height:1.5; }",
+    ".mac-msg.bot { background:#f0f0f0; color:#222; align-self:flex-start; border-bottom-left-radius:4px; }",
+    ".mac-msg.user { background:" + BRAND_COLOR + "; color:white; align-self:flex-end; border-bottom-right-radius:4px; }",
+    ".mac-typing { display:flex; gap:4px; align-items:center; padding:10px 14px; }",
+    ".mac-typing span { width:7px; height:7px; background:#aaa; border-radius:50%; animation:mac-bounce .8s infinite; }",
+    ".mac-typing span:nth-child(2) { animation-delay:.15s; }",
+    ".mac-typing span:nth-child(3) { animation-delay:.3s; }",
+    "@keyframes mac-bounce { 0%,60%,100% { transform:none; } 30% { transform:translateY(-6px); } }",
+    "#mac-chat-input-row { display:flex; padding:12px; border-top:1px solid #eee; gap:8px; }",
+    "#mac-chat-input { flex:1; border:1px solid #ddd; border-radius:20px; padding:8px 14px; outline:none; font-size:14px; resize:none; height:38px; max-height:100px; }",
+    "#mac-chat-send { background:" + BRAND_COLOR + "; border:none; border-radius:50%; width:38px; height:38px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }",
+    "#mac-chat-send svg { width:18px; height:18px; fill:white; }"
+  ].join(" ");
+  document.head.appendChild(style);
+
+  var bubble = document.createElement("div");
+  bubble.id = "mac-chat-bubble";
+  bubble.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
+
+  var win = document.createElement("div");
+  win.id = "mac-chat-window";
+  win.innerHTML = '<div id="mac-chat-header"><div class="avatar">🔧</div><div><div>' + BOT_NAME + '</div><div style="font-size:11px;font-weight:normal;opacity:.85">Accessories &amp; Installation</div></div><div id="mac-chat-close">✕</div></div><div id="mac-chat-messages"></div><div id="mac-chat-input-row"><textarea id="mac-chat-input" placeholder="Ask about your vehicle, services, hours..."></textarea><button id="mac-chat-send"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button></div>';
+
+  document.body.appendChild(bubble);
+  document.body.appendChild(win);
+
+  var msgs = document.getElementById("mac-chat-messages");
+  var input = document.getElementById("mac-chat-input");
+  var isOpen = false;
+
+  function toggleChat() {
+    isOpen = !isOpen;
+    win.classList.toggle("open", isOpen);
+    if (isOpen && msgs.children.length === 0) addBotMsg("Hi! 👋 Welcome to Malibu's Auto Center. How can I help you today?");
+  }
+
+  function addBotMsg(text) {
+    var el = document.createElement("div");
+    el.className = "mac-msg bot";
+    el.textContent = text;
+    msgs.appendChild(el);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function addUserMsg(text) {
+    var el = document.createElement("div");
+    el.className = "mac-msg user";
+    el.textContent = text;
+    msgs.appendChild(el);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function showTyping() {
+    var el = document.createElement("div");
+    el.className = "mac-msg bot mac-typing";
+    el.id = "mac-typing";
+    el.innerHTML = "<span></span><span></span><span></span>";
+    msgs.appendChild(el);
+    msgs.scrollTop = msgs.scrollHeight;
+    return el;
+  }
+
+  function sendMessage() {
+    var text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    addUserMsg(text);
+    var typing = showTyping();
+    fetch(CHATBOT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text, sessionId: sessionId })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      typing.remove();
+      addBotMsg(data.reply || "Sorry, I had trouble responding. Please call us directly!");
+    })
+    .catch(function() {
+      typing.remove();
+      addBotMsg("Having trouble connecting. Please call us at 405-799-6700!");
+    });
+  }
+
+  bubble.addEventListener("click", toggleChat);
+  document.getElementById("mac-chat-close").addEventListener("click", toggleChat);
+  document.getElementById("mac-chat-send").addEventListener("click", sendMessage);
+  input.addEventListener("keydown", function(e) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+})();
+</script>
+</body>
+</html>
