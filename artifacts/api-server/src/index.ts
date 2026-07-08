@@ -203,11 +203,11 @@ We install LLumar window tint on cars, trucks, SUVs, and more. Three film option
 - LLumar CTX (Ceramic): Significantly better heat rejection. Won't interfere with phone signals, GPS, or key fobs. Doesn't fade or turn purple. Best all-around value.
 - LLumar IRX (Nano-Ceramic): Blocks up to 95% of infrared heat. Maximum comfort, best clarity, longest lasting. Our premium option.
 In plain terms: ATR = privacy film; CTX = ceramic; IRX = nano-ceramic.
-NO-FAULT WARRANTY: Available as an optional add-on — not included by default. Mention it as an upgrade when relevant.
+NO-FAULT WARRANTY: Available as an optional add-on for $79+ — not included by default. Mention it as an upgrade when relevant.
 
 WINDOW TINT PRICING (starting at — prices may vary by vehicle complexity):
                      ATR    CTX    IRX
-2 Side Roll-Ups:    $129   $159   $199
+2 Side Roll-Ups (front 2 windows — driver & front passenger only):    $129   $159   $199
 2 Door Car/Truck:   $279   $349   $429
 4 Door Car/Truck:   $299   $369   $449
 Full SUV:           $349   $449   $529
