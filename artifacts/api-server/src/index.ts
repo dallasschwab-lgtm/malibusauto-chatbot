@@ -164,6 +164,7 @@ async function callTool(name, args) {
 }
 
 const sessions = new Map();
+const chatLog = []; // [{sessionId, startTime, messageCount, leadCaptured, firstMessage}]
 
 const CHAT_SYSTEM = `You are a knowledgeable, friendly sales and support assistant for Malibu's Auto Center in Moore, Oklahoma. Think of yourself as one of our best salespeople — you know our products inside and out and help customers find exactly what they need.
 
@@ -191,7 +192,7 @@ Customer: [their exact message]
 Bot: [your exact reply]
 ...every turn, nothing omitted.
 
-ONLY AFTER sm_create_lead_estimate returns successfully, tell the customer: "Perfect — I've got your info saved and our team will be in touch shortly to put together a quote for you!"
+ONLY AFTER sm_create_lead_estimate returns successfully, tell the customer: "Perfect — I've got your info saved and our team will be in touch shortly! Ready to book now? You can schedule online here: https://app.shopmonkey.cloud/public/scheduler/6437411b07b87d0024078ed1?fullPage=true"
 
 IMPORTANT: Never tell a customer their info is saved unless sm_create_lead_estimate has already run and returned success. If the tool fails, say: "I'm having a technical issue saving your info right now — please call us directly at 405-799-6700 and we'll take care of you!"
 
@@ -366,7 +367,12 @@ async function runChat(sessionId, userMessage) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
   const anthropic = new Anthropic({ apiKey });
-  if (!sessions.has(sessionId)) sessions.set(sessionId, []);
+  if (!sessions.has(sessionId)) {
+    sessions.set(sessionId, []);
+    chatLog.push({ sessionId, startTime: new Date().toISOString(), messageCount: 0, leadCaptured: false, firstMessage: userMessage.slice(0, 200) });
+  }
+  const logEntry = chatLog.find(s => s.sessionId === sessionId);
+  if (logEntry) logEntry.messageCount++;
   const history = sessions.get(sessionId);
   history.push({ role: "user", content: userMessage });
   const messages = history.slice(-20);
@@ -378,7 +384,7 @@ async function runChat(sessionId, userMessage) {
       for (const block of response.content) {
         if (block.type === "tool_use") {
           let result;
-          try { result = await callTool(block.name, block.input); } catch (e) { result = JSON.stringify({ error: e.message }); }
+          try { result = await callTool(block.name, block.input); if (block.name === "sm_create_lead_estimate") { const le = chatLog.find(s => s.sessionId === sessionId); if (le) le.leadCaptured = true; } } catch (e) { result = JSON.stringify({ error: e.message }); }
           toolResults.push({ type: "tool_result", tool_use_id: block.id, content: result });
         }
       }
@@ -422,6 +428,13 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(500);
       res.end("Widget file not found: " + e.message);
     }
+    return;
+  }
+  if (req.method === "GET" && pathname === "/api/daily-stats") {
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const recent = chatLog.filter(s => s.startTime >= oneDayAgo);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ date: new Date().toISOString(), totalSessions: recent.length, leadsCaptures: recent.filter(s => s.leadCaptured).length, sessions: recent }));
     return;
   }
   if (req.method === "GET") {
